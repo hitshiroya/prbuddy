@@ -25,7 +25,7 @@ class PRProcessingService {
       }
 
       // Post simple acknowledgment message
-      const message = `🤖 **PR Buddy is Active!**\n\n✅ **PR #${pullNumber} has been raised!**\n\n**PR Title:** ${prInfo.title}\n**Repository:** ${owner}/${repo}\n**Action:** ${prInfo.action}\n\nWebhook processing is working correctly! 🎉`;
+      const message = `Hello hit, new PR raised with number #${pullNumber} 🚀\n\n**Title:** ${prInfo.title}`;
 
              console.log(`📝 Posting simple acknowledgment message for PR #${pullNumber}`);
        await this.githubService.postReviewComment(owner, repo, pullNumber, [message]);
