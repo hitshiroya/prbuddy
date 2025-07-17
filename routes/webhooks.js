@@ -15,6 +15,7 @@ router.post('/github', async (req, res) => {
     const delivery = req.get('X-GitHub-Delivery');
     
     console.log(`📡 Received GitHub webhook: ${event} (${delivery})`);
+    console.log(`🔍 Request body type: ${typeof req.body}, isBuffer: ${Buffer.isBuffer(req.body)}`);
 
     // Verify webhook signature for security
     if (!verifyGitHubSignature(req.body, signature)) {
