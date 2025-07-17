@@ -16,8 +16,8 @@ try {
 
 const app = express();
 
-// Trust proxy for Railway (fixes rate limiting behind proxy)
-app.set('trust proxy', true);
+// Trust proxy for Railway (secure configuration)
+app.set('trust proxy', 1); // Trust only the first proxy (Railway's load balancer)
 
 // Security middleware
 app.use(helmet({
@@ -38,13 +38,15 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting for webhook endpoints (GitHub handles this)
+  skip: (req) => req.path.startsWith('/webhooks'),
 });
 
 app.use(limiter);
 
-// Parse JSON for non-webhook routes only
-app.use('/webhooks/github', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '10mb' }));
+// Configure body parsing middleware in correct order
+app.use('/webhooks', express.raw({ type: 'application/json' })); // Raw for webhooks
+app.use(express.json({ limit: '10mb' })); // JSON for other routes
 
 // Routes
 app.use('/webhooks', webhookRoutes);
