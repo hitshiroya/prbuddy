@@ -126,8 +126,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start the server
-const PORT = config.port;
-const server = app.listen(PORT, () => {
+const PORT = process.env.PORT || config.port || 3000;
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 PR Buddy server started!');
   console.log(`📍 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${config.nodeEnv}`);
