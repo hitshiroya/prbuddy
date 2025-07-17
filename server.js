@@ -127,14 +127,31 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Start the server
 const PORT = process.env.PORT || config.port || 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
+const HOST = process.env.HOST || '0.0.0.0';
+
+const server = app.listen(PORT, HOST, () => {
   console.log('🚀 PR Buddy server started!');
-  console.log(`📍 Server running on port ${PORT}`);
+  console.log(`📍 Server running on ${HOST}:${PORT}`);
   console.log(`🌍 Environment: ${config.nodeEnv}`);
-  console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhooks/github`);
-  console.log(`💚 Health check: http://localhost:${PORT}/webhooks/health`);
+  
+  // Show appropriate URLs based on environment
+  if (config.nodeEnv === 'production') {
+    console.log(`📡 Webhook endpoint: /webhooks/github`);
+    console.log(`💚 Health check: /webhooks/health`);
+    console.log(`🌐 Access your app at the Railway-provided URL`);
+  } else {
+    console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhooks/github`);
+    console.log(`💚 Health check: http://localhost:${PORT}/webhooks/health`);
+  }
+  
   console.log('---');
   console.log('⚡ Ready to receive GitHub webhooks!');
+});
+
+// Add error handling for server startup
+server.on('error', (error) => {
+  console.error('❌ Server startup error:', error);
+  process.exit(1);
 });
 
 module.exports = app; 
