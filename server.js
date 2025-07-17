@@ -44,16 +44,8 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Configure body parsing middleware with explicit path separation
-app.use('/webhooks', express.raw({ type: 'application/json' })); // Raw for webhooks ONLY
-app.use((req, res, next) => {
-  // Only apply JSON parsing to NON-webhook routes
-  if (!req.path.startsWith('/webhooks')) {
-    express.json({ limit: '10mb' })(req, res, next);
-  } else {
-    next();
-  }
-});
+// Body parsing middleware - order matters!
+app.use(express.json({ limit: '10mb' })); // Default JSON parsing for most routes
 
 // Routes
 app.use('/webhooks', webhookRoutes);

@@ -8,7 +8,7 @@ const prProcessingService = new PRProcessingService();
 /**
  * GitHub webhook endpoint
  */
-router.post('/github', async (req, res) => {
+router.post('/github', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const signature = req.get('X-Hub-Signature-256');
     const event = req.get('X-GitHub-Event');
