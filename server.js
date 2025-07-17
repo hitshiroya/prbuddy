@@ -16,6 +16,9 @@ try {
 
 const app = express();
 
+// Trust proxy for Railway (fixes rate limiting behind proxy)
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for API endpoints

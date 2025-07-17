@@ -20,7 +20,7 @@ function verifyGitHubSignature(payload, signature) {
 
   const computedSignature = crypto
     .createHmac('sha256', secret)
-    .update(payload, 'utf8')
+    .update(payload)
     .digest('hex');
 
   const expectedSignature = `sha256=${computedSignature}`;
