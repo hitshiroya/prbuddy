@@ -24,76 +24,22 @@ class PRProcessingService {
         return;
       }
 
-      // Get the list of files changed in the PR
-      const files = await this.githubService.getPRFiles(owner, repo, pullNumber);
-      console.log(`📁 Found ${files.length} changed files`);
+      // Post simple acknowledgment message
+      const message = `🤖 **PR Buddy is Active!**\n\n✅ **PR #${pullNumber} has been raised!**\n\n**PR Title:** ${prInfo.title}\n**Repository:** ${owner}/${repo}\n**Action:** ${prInfo.action}\n\nWebhook processing is working correctly! 🎉`;
 
-      // Filter files that should be reviewed
-      const reviewableFiles = this.githubService.filterReviewableFiles(files);
-      console.log(`✅ ${reviewableFiles.length} files selected for review`);
-
-      if (reviewableFiles.length === 0) {
-        console.log(`ℹ️  No reviewable files found in PR #${pullNumber}`);
-        await this.githubService.postReviewComment(owner, repo, pullNumber, [
-          '🤖 **AI Code Review**\n\nNo reviewable code files found in this PR. The changes might be documentation, configuration, or binary files that don\'t require code review.'
-        ]);
-        return;
-      }
-
-      // Process each file and collect review comments
-      const reviewComments = [];
-      
-      for (const file of reviewableFiles) {
-        try {
-          console.log(`📖 Reviewing file: ${file.filename}`);
-          
-          // Get file content or use patch/diff
-          let content;
-          let language = this.getLanguageFromExtension(file.filename);
-
-          if (file.status === 'added' || file.status === 'modified') {
-            try {
-              // Try to get full file content for better context
-              content = await this.githubService.getFileContent(owner, repo, file.filename, headSha);
-            } catch (error) {
-              // Fall back to patch if file content is not available
-              content = file.patch || '';
-              console.log(`Using patch for ${file.filename}: ${error.message}`);
-            }
-          } else {
-            // For other statuses, use the patch
-            content = file.patch || '';
-          }
-
-          if (!content.trim()) {
-            console.log(`⏭️  Skipping ${file.filename} - no content to review`);
-            continue;
-          }
-
-          // Get AI review for this file
-          const fileComments = await this.aiService.reviewCode(file.filename, content, language);
-          reviewComments.push(...fileComments);
-
-        } catch (error) {
-          console.error(`❌ Error reviewing file ${file.filename}:`, error.message);
-          reviewComments.push(`**${file.filename}**\n\n⚠️ Could not review this file: ${error.message}`);
-        }
-      }
-
-      // Post the review comments
-      await this.githubService.postReviewComment(owner, repo, pullNumber, reviewComments);
-      console.log(`✅ Review completed for PR #${pullNumber}`);
+             console.log(`📝 Posting simple acknowledgment message for PR #${pullNumber}`);
+       await this.githubService.postReviewComment(owner, repo, pullNumber, [message]);
+       
+       console.log(`✅ Simple acknowledgment posted successfully for PR #${pullNumber}`);
+       return;
 
     } catch (error) {
       console.error(`❌ Error processing PR #${pullNumber}:`, error.message);
       
       try {
-        // Add a label indicating manual review is needed
-        await this.githubService.addLabelToPR(owner, repo, pullNumber, 'manual review');
-        
         // Post an error comment
         await this.githubService.postReviewComment(owner, repo, pullNumber, [
-          '🤖 **AI Code Review - Error**\n\n❌ An error occurred while reviewing this PR. Manual review may be needed.\n\n' +
+          '🤖 **PR Buddy - Error**\n\n❌ An error occurred while processing this PR.\n\n' +
           `Error: ${error.message}`
         ]);
       } catch (commentError) {
