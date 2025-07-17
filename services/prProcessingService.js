@@ -24,14 +24,18 @@ class PRProcessingService {
         return;
       }
 
-      // Post simple acknowledgment message
+            // Post simple acknowledgment message
       const message = `Hello hit, new PR raised with number #${pullNumber} 🚀\n\n**Title:** ${prInfo.title}`;
 
-             console.log(`📝 Posting simple acknowledgment message for PR #${pullNumber}`);
-       await this.githubService.postReviewComment(owner, repo, pullNumber, [message]);
-       
-       console.log(`✅ Simple acknowledgment posted successfully for PR #${pullNumber}`);
-       return;
+      console.log(`🎉 Hello hit, new PR raised with number #${pullNumber} 🚀`);
+      console.log(`📋 PR Title: ${prInfo.title}`);
+      console.log(`📂 Repository: ${owner}/${repo}`);
+      console.log(`📝 Posting acknowledgment message for PR #${pullNumber}`);
+      
+      await this.githubService.postReviewComment(owner, repo, pullNumber, [message]);
+      
+      console.log(`✅ Message posted successfully for PR #${pullNumber}`);
+      return;
 
     } catch (error) {
       console.error(`❌ Error processing PR #${pullNumber}:`, error.message);
