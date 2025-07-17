@@ -8,7 +8,7 @@ const prProcessingService = new PRProcessingService();
 /**
  * GitHub webhook endpoint
  */
-router.post('/github', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/github', async (req, res) => {
   try {
     const signature = req.get('X-Hub-Signature-256');
     const event = req.get('X-GitHub-Event');
@@ -73,8 +73,10 @@ router.post('/github', express.raw({ type: 'application/json' }), async (req, re
  * Health check endpoint
  */
 router.get('/health', async (req, res) => {
+  console.log('🏥 Health check endpoint accessed');
   try {
     const health = await prProcessingService.healthCheck();
+    console.log('✅ Health check successful');
     res.status(200).json({
       status: 'healthy',
       services: health,
@@ -82,6 +84,7 @@ router.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('❌ Health check failed:', error);
     res.status(500).json({
       status: 'unhealthy',
       error: error.message,

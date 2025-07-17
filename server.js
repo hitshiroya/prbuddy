@@ -42,15 +42,9 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Parse JSON for non-webhook routes
-app.use((req, res, next) => {
-  if (req.path.startsWith('/webhooks/github')) {
-    // Skip JSON parsing for GitHub webhooks (handled by raw middleware)
-    next();
-  } else {
-    express.json({ limit: '10mb' })(req, res, next);
-  }
-});
+// Parse JSON for non-webhook routes only
+app.use('/webhooks/github', express.raw({ type: 'application/json' }));
+app.use(express.json({ limit: '10mb' }));
 
 // Routes
 app.use('/webhooks', webhookRoutes);
