@@ -29,9 +29,9 @@ async function postPRComment(owner, repo, pullNumber, comment) {
 }
 
 // Function to post line-specific review comments
-async function postLineComment(owner, repo, pullNumber, filePath, line, comment) {
+async function postLineComment(owner, repo, pullNumber, filePath, position, comment) {
   try {
-    console.log(`📍 Posting line comment on ${filePath}:${line}`);
+    console.log(`📍 Posting line comment on ${filePath} at position ${position}`);
     
     const response = await octokit.rest.pulls.createReviewComment({
       owner: owner,
@@ -39,7 +39,7 @@ async function postLineComment(owner, repo, pullNumber, filePath, line, comment)
       pull_number: pullNumber,
       body: comment,
       path: filePath,
-      line: line
+      position: position  // Use position instead of line
     });
     
     console.log(`✅ Line comment posted! Comment ID: ${response.data.id}`);
@@ -100,13 +100,13 @@ async function getPRFiles(owner, repo, pullNumber) {
 }
 
 // Simple code analysis function to find issues in lines
-function analyzeCodeLine(line, lineNumber, filename) {
+function analyzeCodeLine(line, position, filename) {
   const issues = [];
   
   // Check for console.log (simple example)
   if (line.includes('console.log')) {
     issues.push({
-      line: lineNumber,
+      position: position,
       message: "🚨 **Debug code detected!**\n\nConsider removing `console.log` statements before merging to production."
     });
   }
@@ -114,7 +114,7 @@ function analyzeCodeLine(line, lineNumber, filename) {
   // Check for TODO comments
   if (line.includes('TODO') || line.includes('FIXME')) {
     issues.push({
-      line: lineNumber,
+      position: position,
       message: "📝 **TODO/FIXME found!**\n\nDon't forget to address this before merging."
     });
   }
@@ -122,7 +122,7 @@ function analyzeCodeLine(line, lineNumber, filename) {
   // Check for var usage (JavaScript files)
   if (filename.endsWith('.js') && line.includes('var ')) {
     issues.push({
-      line: lineNumber,
+      position: position,
       message: "💡 **Modern JavaScript suggestion!**\n\nConsider using `const` or `let` instead of `var` for better scoping."
     });
   }
@@ -132,7 +132,7 @@ function analyzeCodeLine(line, lineNumber, filename) {
       !line.trim().endsWith('{') && !line.trim().endsWith('}') && 
       !line.includes('//') && !line.includes('/*')) {
     issues.push({
-      line: lineNumber,
+      position: position,
       message: "🔧 **Style suggestion!**\n\nConsider adding a semicolon at the end of this statement."
     });
   }
@@ -146,32 +146,26 @@ function analyzeFilePatch(filename, patch) {
   
   const lineComments = [];
   const lines = patch.split('\n');
-  let currentLineNumber = 0;
+  let diffPosition = 0;  // Position in the diff (what GitHub API needs)
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Track line numbers in the diff
-    if (line.startsWith('@@')) {
-      // Parse line number from diff header like "@@ -1,4 +1,6 @@"
-      const match = line.match(/\+(\d+)/);
-      if (match) {
-        currentLineNumber = parseInt(match[1]) - 1;
-      }
+    // Skip diff headers
+    if (line.startsWith('@@') || line.startsWith('+++') || line.startsWith('---')) {
       continue;
     }
     
+    // Increment position for all lines except headers
+    diffPosition++;
+    
     // Only analyze added lines (start with +)
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      currentLineNumber++;
+    if (line.startsWith('+')) {
       const codeContent = line.substring(1); // Remove the '+' prefix
       
       // Analyze this line
-      const issues = analyzeCodeLine(codeContent, currentLineNumber, filename);
+      const issues = analyzeCodeLine(codeContent, diffPosition, filename);
       lineComments.push(...issues);
-    } else if (line.startsWith(' ')) {
-      // Context line (unchanged)
-      currentLineNumber++;
     }
   }
   
@@ -261,10 +255,10 @@ app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
             // Post line-specific comments
             for (const issue of lineIssues) {
               try {
-                await postLineComment(owner, repo, pullNumber, file.filename, issue.line, issue.message);
+                await postLineComment(owner, repo, pullNumber, file.filename, issue.position, issue.message);
                 totalLineComments++;
               } catch (error) {
-                console.error(`❌ Failed to post comment on ${file.filename}:${issue.line}:`, error.message);
+                console.error(`❌ Failed to post comment on ${file.filename}:${issue.position}:`, error.message);
               }
             }
             
