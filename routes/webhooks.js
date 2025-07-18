@@ -6,6 +6,30 @@ const { verifyGitHubSignature, extractPRInfo, shouldProcessEvent } = require('..
 const prProcessingService = new PRProcessingService();
 
 /**
+ * SIMPLE DEBUG WEBHOOK - Just log everything that comes in
+ */
+router.post('/debug', express.raw({ type: '*/*' }), async (req, res) => {
+  console.log('\n🔥 === WEBHOOK DEBUG === 🔥');
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('🌐 Method:', req.method);
+  console.log('📍 URL:', req.url);
+  console.log('📋 Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('📦 Body type:', typeof req.body);
+  console.log('📏 Body length:', req.body ? req.body.length : 'N/A');
+  console.log('🔍 Is Buffer:', Buffer.isBuffer(req.body));
+  console.log('📄 Raw body preview:', req.body ? req.body.toString().substring(0, 200) + '...' : 'No body');
+  console.log('🔥 === END DEBUG === 🔥\n');
+  
+  res.status(200).json({ 
+    message: 'Debug webhook received!',
+    timestamp: new Date().toISOString(),
+    bodyType: typeof req.body,
+    isBuffer: Buffer.isBuffer(req.body),
+    headers: Object.keys(req.headers)
+  });
+});
+
+/**
  * GitHub webhook endpoint
  */
 router.post('/github', express.raw({ type: 'application/json' }), async (req, res) => {
