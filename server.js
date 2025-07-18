@@ -21,11 +21,14 @@ app.post('/webhook', (req, res) => {
   
   // DEBUG: Log raw payload info
   console.log('🔍 DEBUG: Body type:', typeof req.body);
-  console.log('🔍 DEBUG: Body keys:', req.body ? Object.keys(req.body) : 'no body');
+  console.log("pritning body here....")
+  console.log(req.body);
+  //console.log('🔍 DEBUG: Body keys:', req.body ? Object.keys(req.body) : 'no body');
   
   // Log payload info if it's a pull request event
   if (req.headers['x-github-event'] === 'pull_request') {
     const payload = req.body;
+    console.log(payload,"printing payload here....");
     console.log('🚀 PR Event Details:');
     console.log('   Action:', payload.action || 'unknown');
     console.log('   PR Number:', payload.pull_request?.number || 'unknown');
