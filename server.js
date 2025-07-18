@@ -1,5 +1,6 @@
 const express = require('express');
 const { Octokit } = require('@octokit/rest');
+const Groq = require('groq-sdk');
 
 const app = express();
 
@@ -7,6 +8,80 @@ const app = express();
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN
 });
+
+// Initialize Groq AI client
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
+
+// AI-powered code analysis function
+async function analyzeCodeWithAI(filename, patch, fileContent = '') {
+  try {
+    console.log(`🤖 Sending ${filename} to AI for analysis...`);
+    
+    const prompt = `You are an expert code reviewer. Analyze this code diff and provide constructive feedback.
+
+**File:** ${filename}
+**Changes:**
+\`\`\`diff
+${patch}
+\`\`\`
+
+Please review this code and provide:
+1. **Issues found** (bugs, security, performance, style)
+2. **Suggestions** for improvement
+3. **Positive feedback** for good practices
+4. **Overall assessment** (1-5 stars)
+
+Keep feedback concise but helpful. Focus on meaningful issues, not nitpicks.
+
+**Format your response as JSON:**
+{
+  "rating": 4,
+  "issues": [
+    {"type": "style", "description": "Consider using const instead of let", "severity": "low"},
+    {"type": "performance", "description": "This loop could be optimized", "severity": "medium"}
+  ],
+  "suggestions": [
+    "Great use of error handling!",
+    "Consider adding type checking"
+  ],
+  "summary": "Overall good code with minor style improvements needed"
+}`;
+
+    const response = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+      temperature: 0.3,
+      max_tokens: 1000
+    });
+
+    const aiResponse = response.choices[0].message.content;
+    console.log(`✅ AI analysis completed for ${filename}`);
+    
+    // Try to parse JSON response
+    try {
+      return JSON.parse(aiResponse);
+    } catch (parseError) {
+      console.warn(`⚠️ AI response not JSON, using fallback for ${filename}`);
+      return {
+        rating: 3,
+        issues: [],
+        suggestions: [aiResponse.substring(0, 200) + '...'],
+        summary: "AI analysis completed"
+      };
+    }
+    
+  } catch (error) {
+    console.error(`❌ AI analysis failed for ${filename}:`, error.message);
+    return {
+      rating: 3,
+      issues: [],
+      suggestions: [],
+      summary: "AI analysis unavailable"
+    };
+  }
+}
 
 // Simple function to post a comment on a PR
 async function postPRComment(owner, repo, pullNumber, comment) {
@@ -174,7 +249,21 @@ function analyzeFilePatch(filename, patch) {
 
 // Simple root endpoint
 app.get('/', (req, res) => {
-  res.json({ message: 'PR Buddy - Step 4: Line-specific Code Review' });
+  res.json({ 
+    message: 'PR Buddy - Step 5: AI-Powered Code Review',
+    features: [
+      '🤖 AI-powered code analysis',
+      '📊 Intelligent issue detection', 
+      '⭐ Code quality ratings',
+      '💡 Smart suggestions',
+      '🎯 Comprehensive reviews'
+    ],
+    ai: {
+      provider: 'Groq',
+      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+      status: process.env.GROQ_API_KEY ? 'configured' : 'missing key'
+    }
+  });
 });
 
 // Enhanced webhook endpoint with line-specific commenting
@@ -246,50 +335,97 @@ app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
           let totalLineComments = 0;
           const analysisResults = [];
           
-          // Analyze each file for line-specific issues
+          // Analyze each file with AI instead of simple pattern matching
           for (const file of files) {
-            console.log(`🔍 Analyzing ${file.filename}...`);
+            console.log(`🔍 Analyzing ${file.filename} with AI...`);
             
-            const lineIssues = analyzeFilePatch(file.filename, file.patch);
+            // Use AI to analyze the file instead of simple pattern matching
+            const aiAnalysis = await analyzeCodeWithAI(file.filename, file.patch);
             
-            // Post line-specific comments
-            for (const issue of lineIssues) {
-              try {
-                await postLineComment(owner, repo, pullNumber, file.filename, issue.position, issue.message);
-                totalLineComments++;
-              } catch (error) {
-                console.error(`❌ Failed to post comment on ${file.filename}:${issue.position}:`, error.message);
-              }
-            }
+            console.log(`📊 AI found ${aiAnalysis.issues.length} issues in ${file.filename} (Rating: ${aiAnalysis.rating}/5)`);
             
             analysisResults.push({
               filename: file.filename,
-              issues: lineIssues.length,
-              changes: file.changes
+              issues: aiAnalysis.issues.length,
+              changes: file.changes,
+              status: file.status,
+              additions: file.additions,
+              deletions: file.deletions,
+              aiAnalysis: aiAnalysis // Store the full AI analysis
             });
+            
+            totalLineComments += aiAnalysis.issues.length; // Count for summary stats
           }
           
-          // Create summary review
-          const summaryBody = `🤖 **PR Buddy - Code Review Summary** 🤖
+          // Create AI-enhanced summary comment
+          const overallRating = analysisResults.length > 0 
+            ? Math.round(analysisResults.reduce((sum, r) => sum + (r.aiAnalysis.rating || 3), 0) / analysisResults.length)
+            : 3;
+            
+          const summaryBody = `🤖 **PR Buddy - AI Code Review** 🤖
 
-Hello @${author}! I've reviewed your PR and here's what I found:
+Hello @${author}! I've analyzed your PR with AI and here's what I found:
 
-📊 **Review Statistics:**
-- **Files analyzed:** ${files.length}
-- **Total changes:** ${files.reduce((sum, f) => sum + f.changes, 0)} lines
-- **Line comments posted:** ${totalLineComments}
+## 📊 **Overview**
+- **Files changed:** ${files.length}
+- **Total lines:** +${files.reduce((sum, f) => sum + f.additions, 0)}/-${files.reduce((sum, f) => sum + f.deletions, 0)}
+- **Issues found:** ${totalLineComments}
+- **Overall rating:** ${'⭐'.repeat(overallRating)} (${overallRating}/5)
 
-📁 **File Analysis:**
-${analysisResults.map(r => `- \`${r.filename}\`: ${r.changes} changes, ${r.issues} suggestions`).join('\n')}
+## 📁 **Detailed Analysis**
+${analysisResults.map(file => {
+  const ai = file.aiAnalysis;
+  let fileSection = `### \`${file.filename}\` (${file.status}) - ${'⭐'.repeat(ai.rating || 3)} ${ai.rating || 3}/5
+- **Changes:** +${file.additions}/-${file.deletions} lines
+- **Issues:** ${ai.issues.length}`;
 
-${totalLineComments > 0 ? 
-  `✨ **Found ${totalLineComments} suggestions above!** Please review the line-specific comments.` : 
-  `🎉 **Great work!** No major issues found in this PR.`
+  if (ai.issues.length > 0) {
+    fileSection += `\n\n**🔍 Issues Found:**`;
+    ai.issues.forEach(issue => {
+      const icon = issue.severity === 'high' ? '🚨' : 
+                   issue.severity === 'medium' ? '⚠️' : '💡';
+      fileSection += `\n- ${icon} **${issue.type}**: ${issue.description}`;
+    });
+  }
+
+  if (ai.suggestions.length > 0) {
+    fileSection += `\n\n**💡 AI Suggestions:**`;
+    ai.suggestions.forEach(suggestion => {
+      fileSection += `\n- ${suggestion}`;
+    });
+  }
+
+  if (ai.summary) {
+    fileSection += `\n\n**📝 Summary:** ${ai.summary}`;
+  }
+  
+  return fileSection;
+}).join('\n\n')}
+
+## 🎯 **Overall Assessment**
+${totalLineComments === 0 ? 
+  `🎉 **Excellent work!** AI found no major issues. Your code follows good practices and is well-structured.` :
+  `📝 **${totalLineComments} areas for improvement found.** The AI has identified some opportunities to enhance your code quality.`
 }
 
-Thanks for your contribution! 🚀`;
+${overallRating >= 4 ? '🏆 **High Quality Code** - Great job!' :
+  overallRating >= 3 ? '👍 **Good Code** - Some room for improvement' :
+  '📚 **Needs Improvement** - Consider addressing the issues above'}
 
-          // Post summary review
+## 🚀 **Next Steps**
+${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'high')) ? 
+  '- ⚠️ **High priority**: Address security/bug issues first' : ''}
+${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'medium')) ? 
+  '- 🔄 **Medium priority**: Performance and maintainability improvements' : ''}
+${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'low')) ? 
+  '- ✨ **Low priority**: Style and minor improvements' : ''}
+
+Thanks for your contribution! Keep up the great work! 🎉
+
+---
+*🤖 Powered by AI • Generated by PR Buddy*`;
+
+          // Post AI-enhanced summary review
           await postSummaryReview(owner, repo, pullNumber, summaryBody, totalLineComments);
           
         } catch (error) {
