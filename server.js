@@ -44,11 +44,11 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Body parsing middleware - order matters!
-app.use(express.json({ limit: '10mb' })); // Default JSON parsing for most routes
-
-// Routes
+// Webhook routes need raw body for signature verification - mount BEFORE body parsing
 app.use('/webhooks', webhookRoutes);
+
+// Body parsing middleware for non-webhook routes
+app.use(express.json({ limit: '10mb' })); // JSON parsing for non-webhook routes
 
 // Root endpoint
 app.get('/', (req, res) => {
