@@ -19,6 +19,10 @@ app.post('/webhook', (req, res) => {
   console.log('📦 GitHub Delivery:', req.headers['x-github-delivery'] || 'unknown');
   console.log('🔐 Has Signature:', req.headers['x-hub-signature-256'] ? 'Yes' : 'No');
   
+  // DEBUG: Log raw payload info
+  console.log('🔍 DEBUG: Body type:', typeof req.body);
+  console.log('🔍 DEBUG: Body keys:', req.body ? Object.keys(req.body) : 'no body');
+  
   // Log payload info if it's a pull request event
   if (req.headers['x-github-event'] === 'pull_request') {
     const payload = req.body;
@@ -28,10 +32,25 @@ app.post('/webhook', (req, res) => {
     console.log('   PR Title:', payload.pull_request?.title || 'unknown');
     console.log('   Repository:', payload.repository?.full_name || 'unknown');
     console.log('   Author:', payload.pull_request?.user?.login || 'unknown');
+    
+    // DEBUG: Show raw PR data structure
+    if (payload.pull_request) {
+      console.log('🔍 DEBUG: PR object exists');
+      console.log('🔍 DEBUG: PR keys:', Object.keys(payload.pull_request));
+    } else {
+      console.log('🔍 DEBUG: No pull_request object in payload');
+    }
   } else {
     console.log('📝 Non-PR Event - Basic Info:');
     console.log('   Repository:', req.body.repository?.full_name || 'unknown');
     console.log('   Action:', req.body.action || 'no action');
+    
+    // DEBUG: Show what's actually in the payload
+    if (req.body.repository) {
+      console.log('🔍 DEBUG: Repository object exists');
+    } else {
+      console.log('🔍 DEBUG: No repository object in payload');
+    }
   }
   
   console.log('🎯 === END WEBHOOK === 🎯\n');
