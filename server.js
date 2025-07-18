@@ -1,16 +1,13 @@
 const express = require('express');
 const app = express();
 
-// Parse JSON bodies
-app.use(express.json());
-
 // Simple root endpoint
 app.get('/', (req, res) => {
   res.json({ message: 'PR Buddy - Step 2: Webhook Data Logger' });
 });
 
-// Enhanced webhook endpoint - log detailed information
-app.post('/webhook', (req, res) => {
+// Enhanced webhook endpoint with raw body parsing
+app.post('/webhook', express.raw({ type: '*/*' }), (req, res) => {
   console.log('\n🎯 === WEBHOOK TRIGGERED === 🎯');
   console.log('⏰ Time:', new Date().toISOString());
   
@@ -18,42 +15,40 @@ app.post('/webhook', (req, res) => {
   console.log('📋 GitHub Event:', req.headers['x-github-event'] || 'unknown');
   console.log('📦 GitHub Delivery:', req.headers['x-github-delivery'] || 'unknown');
   console.log('🔐 Has Signature:', req.headers['x-hub-signature-256'] ? 'Yes' : 'No');
+  console.log('📄 Content-Type:', req.headers['content-type'] || 'unknown');
   
   // DEBUG: Log raw payload info
   console.log('🔍 DEBUG: Body type:', typeof req.body);
-  console.log("pritning body here....")
-  console.log(req.body);
-  //console.log('🔍 DEBUG: Body keys:', req.body ? Object.keys(req.body) : 'no body');
+  console.log('🔍 DEBUG: Body length:', req.body ? req.body.length : 'no body');
+  console.log('🔍 DEBUG: Is Buffer:', Buffer.isBuffer(req.body));
+  
+  // Parse JSON from raw buffer
+  let payload = {};
+  try {
+    if (req.body && req.body.length > 0) {
+      const bodyString = req.body.toString();
+      console.log('🔍 DEBUG: Raw body preview:', bodyString.substring(0, 100) + '...');
+      payload = JSON.parse(bodyString);
+      console.log('✅ Successfully parsed JSON payload');
+    } else {
+      console.log('❌ No body data received');
+    }
+  } catch (error) {
+    console.log('❌ JSON parse error:', error.message);
+  }
   
   // Log payload info if it's a pull request event
   if (req.headers['x-github-event'] === 'pull_request') {
-    const payload = req.body;
-    console.log(payload,"printing payload here....");
     console.log('🚀 PR Event Details:');
     console.log('   Action:', payload.action || 'unknown');
     console.log('   PR Number:', payload.pull_request?.number || 'unknown');
     console.log('   PR Title:', payload.pull_request?.title || 'unknown');
     console.log('   Repository:', payload.repository?.full_name || 'unknown');
     console.log('   Author:', payload.pull_request?.user?.login || 'unknown');
-    
-    // DEBUG: Show raw PR data structure
-    if (payload.pull_request) {
-      console.log('🔍 DEBUG: PR object exists');
-      console.log('🔍 DEBUG: PR keys:', Object.keys(payload.pull_request));
-    } else {
-      console.log('🔍 DEBUG: No pull_request object in payload');
-    }
   } else {
     console.log('📝 Non-PR Event - Basic Info:');
-    console.log('   Repository:', req.body.repository?.full_name || 'unknown');
-    console.log('   Action:', req.body.action || 'no action');
-    
-    // DEBUG: Show what's actually in the payload
-    if (req.body.repository) {
-      console.log('🔍 DEBUG: Repository object exists');
-    } else {
-      console.log('🔍 DEBUG: No repository object in payload');
-    }
+    console.log('   Repository:', payload.repository?.full_name || 'unknown');
+    console.log('   Action:', payload.action || 'no action');
   }
   
   console.log('🎯 === END WEBHOOK === 🎯\n');
