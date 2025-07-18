@@ -19,56 +19,57 @@ async function analyzeCodeWithAI(filename, patch, fileContent = '') {
   try {
     console.log(`🤖 Sending ${filename} to AI for analysis...`);
     
-    const prompt = `You are an expert code reviewer. Analyze this code diff and provide constructive feedback.
+    const prompt = `You are a senior software engineer doing a thorough code review. Your job is to find REAL issues and bugs.
 
-**File:** ${filename}
-**Changes:**
+File: ${filename}
+Code changes:
 \`\`\`diff
 ${patch}
 \`\`\`
 
-Please review this code and provide:
-1. **Issues found** (bugs, security, performance, style)
-2. **Suggestions** for improvement
-3. **Positive feedback** for good practices
-4. **Overall assessment** (1-5 stars)
+CAREFULLY analyze this code for:
+- Syntax errors, bugs, logical mistakes
+- Security vulnerabilities 
+- Performance issues
+- Poor coding practices
+- Missing error handling
 
-Keep feedback concise but helpful. Focus on meaningful issues, not nitpicks.
+Be strict and thorough. If the code has problems, rate it low (1-2 stars). Only give high ratings (4-5) for genuinely good code.
 
-**Format your response as JSON:**
+Return ONLY this JSON:
 {
-  "rating": 4,
+  "rating": 2,
   "issues": [
-    {"type": "style", "description": "Consider using const instead of let", "severity": "low"},
-    {"type": "performance", "description": "This loop could be optimized", "severity": "medium"}
+    {"type": "bug", "description": "Missing semicolon will cause error", "severity": "high"},
+    {"type": "security", "description": "User input not validated", "severity": "medium"}
   ],
-  "suggestions": [
-    "Great use of error handling!",
-    "Consider adding type checking"
-  ],
-  "summary": "Overall good code with minor style improvements needed"
+  "suggestions": ["Add error handling", "Use strict mode"],
+  "summary": "Code has several issues that need fixing"
 }`;
 
     const response = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
       model: process.env.GROQ_MODEL || 'llama3-8b-8192',
-      temperature: 0.3,
-      max_tokens: 1000
+      temperature: 0.1,
+      max_tokens: 800
     });
 
-    const aiResponse = response.choices[0].message.content;
-    console.log(`✅ AI analysis completed for ${filename}`);
+    const aiResponse = response.choices[0].message.content.trim();
+    console.log(`🔍 Raw AI response for ${filename}:`, aiResponse.substring(0, 200) + '...');
     
-    // Try to parse JSON response
     try {
-      return JSON.parse(aiResponse);
+      const parsed = JSON.parse(aiResponse);
+      console.log(`✅ Successfully parsed JSON for ${filename}`);
+      return parsed;
     } catch (parseError) {
-      console.warn(`⚠️ AI response not JSON, using fallback for ${filename}`);
+      console.warn(`⚠️ JSON parse failed for ${filename}:`, parseError.message);
+      
+      // Simple fallback analysis
       return {
         rating: 3,
         issues: [],
-        suggestions: [aiResponse.substring(0, 200) + '...'],
-        summary: "AI analysis completed"
+        suggestions: ["I reviewed your code but had trouble formatting the response"],
+        summary: "Code reviewed - see suggestions above"
       };
     }
     
@@ -77,8 +78,8 @@ Keep feedback concise but helpful. Focus on meaningful issues, not nitpicks.
     return {
       rating: 3,
       issues: [],
-      suggestions: [],
-      summary: "AI analysis unavailable"
+      suggestions: ["AI service temporarily unavailable"],
+      summary: "Could not analyze this file right now"
     };
   }
 }
@@ -357,75 +358,78 @@ app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
             totalLineComments += aiAnalysis.issues.length; // Count for summary stats
           }
           
-          // Create AI-enhanced summary comment
+          // Create human-readable AI summary comment
           const overallRating = analysisResults.length > 0 
             ? Math.round(analysisResults.reduce((sum, r) => sum + (r.aiAnalysis.rating || 3), 0) / analysisResults.length)
             : 3;
             
-          const summaryBody = `🤖 **PR Buddy - AI Code Review** 🤖
+          const totalChanges = files.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+          const criticalIssues = analysisResults.reduce((count, r) => 
+            count + r.aiAnalysis.issues.filter(i => i.severity === 'high').length, 0);
+            
+          const summaryBody = `Hey @${author}! 👋
 
-Hello @${author}! I've analyzed your PR with AI and here's what I found:
+I just finished reviewing your PR "${title}" and here's what I found:
 
-## 📊 **Overview**
-- **Files changed:** ${files.length}
-- **Total lines:** +${files.reduce((sum, f) => sum + f.additions, 0)}/-${files.reduce((sum, f) => sum + f.deletions, 0)}
-- **Issues found:** ${totalLineComments}
-- **Overall rating:** ${'⭐'.repeat(overallRating)} (${overallRating}/5)
-
-## 📁 **Detailed Analysis**
-${analysisResults.map(file => {
-  const ai = file.aiAnalysis;
-  let fileSection = `### \`${file.filename}\` (${file.status}) - ${'⭐'.repeat(ai.rating || 3)} ${ai.rating || 3}/5
-- **Changes:** +${file.additions}/-${file.deletions} lines
-- **Issues:** ${ai.issues.length}`;
-
-  if (ai.issues.length > 0) {
-    fileSection += `\n\n**🔍 Issues Found:**`;
-    ai.issues.forEach(issue => {
-      const icon = issue.severity === 'high' ? '🚨' : 
-                   issue.severity === 'medium' ? '⚠️' : '💡';
-      fileSection += `\n- ${icon} **${issue.type}**: ${issue.description}`;
-    });
-  }
-
-  if (ai.suggestions.length > 0) {
-    fileSection += `\n\n**💡 AI Suggestions:**`;
-    ai.suggestions.forEach(suggestion => {
-      fileSection += `\n- ${suggestion}`;
-    });
-  }
-
-  if (ai.summary) {
-    fileSection += `\n\n**📝 Summary:** ${ai.summary}`;
-  }
-  
-  return fileSection;
-}).join('\n\n')}
-
-## 🎯 **Overall Assessment**
-${totalLineComments === 0 ? 
-  `🎉 **Excellent work!** AI found no major issues. Your code follows good practices and is well-structured.` :
-  `📝 **${totalLineComments} areas for improvement found.** The AI has identified some opportunities to enhance your code quality.`
+${overallRating >= 4 ? 
+  `🎉 **Great work!** Your code looks really solid. I'm giving this a ${overallRating}/5 rating.` :
+  overallRating >= 3 ?
+  `👍 **Pretty good overall!** There are a few things to clean up, but you're on the right track. Rating: ${overallRating}/5.` :
+  `⚠️ **Needs some work.** I found several issues that should be addressed before merging. Rating: ${overallRating}/5.`
 }
 
-${overallRating >= 4 ? '🏆 **High Quality Code** - Great job!' :
-  overallRating >= 3 ? '👍 **Good Code** - Some room for improvement' :
-  '📚 **Needs Improvement** - Consider addressing the issues above'}
+${analysisResults.map(file => {
+  const ai = file.aiAnalysis;
+  
+  if (ai.issues.length === 0) {
+    return `✅ **${file.filename}** - Looks good! No issues found.`;
+  }
+  
+  let fileText = `📝 **${file.filename}** (${ai.rating}/5 stars):`;
+  
+  const highIssues = ai.issues.filter(i => i.severity === 'high');
+  const mediumIssues = ai.issues.filter(i => i.severity === 'medium');
+  const lowIssues = ai.issues.filter(i => i.severity === 'low');
+  
+  if (highIssues.length > 0) {
+    fileText += `\n⚠️ **Critical issues:** ${highIssues.map(i => i.description).join(', ')}`;
+  }
+  
+  if (mediumIssues.length > 0) {
+    fileText += `\n🔧 **Improvements needed:** ${mediumIssues.map(i => i.description).join(', ')}`;
+  }
+  
+  if (lowIssues.length > 0) {
+    fileText += `\n💡 **Minor suggestions:** ${lowIssues.map(i => i.description).join(', ')}`;
+  }
+  
+  if (ai.suggestions.length > 0) {
+    fileText += `\n💭 **My thoughts:** ${ai.suggestions.join('. ')}`;
+  }
+  
+  return fileText;
+}).join('\n\n')}
 
-## 🚀 **Next Steps**
-${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'high')) ? 
-  '- ⚠️ **High priority**: Address security/bug issues first' : ''}
-${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'medium')) ? 
-  '- 🔄 **Medium priority**: Performance and maintainability improvements' : ''}
-${analysisResults.some(r => r.aiAnalysis.issues.some(i => i.severity === 'low')) ? 
-  '- ✨ **Low priority**: Style and minor improvements' : ''}
+${criticalIssues > 0 ? 
+  `🚨 **Important:** I found ${criticalIssues} critical issue${criticalIssues > 1 ? 's' : ''} that should be fixed before merging.` : 
+  totalLineComments > 0 ?
+  `📋 **Summary:** Found ${totalLineComments} total suggestion${totalLineComments > 1 ? 's' : ''} across ${files.length} file${files.length > 1 ? 's' : ''}.` :
+  `🎯 **All clear!** No major issues found in your ${totalChanges} line${totalChanges > 1 ? 's' : ''} of changes.`
+}
 
-Thanks for your contribution! Keep up the great work! 🎉
+${overallRating <= 2 ? 
+  `🔄 **Next steps:** Please address the critical issues above before requesting another review.` :
+  overallRating <= 3 ?
+  `👀 **Suggestion:** Consider fixing the medium-priority items when you have a chance.` :
+  `🚀 **Ready to go!** This looks good for merging once any final feedback is addressed.`
+}
+
+Keep up the good work! 🎉
 
 ---
-*🤖 Powered by AI • Generated by PR Buddy*`;
+*🤖 Reviewed by PR Buddy*`;
 
-          // Post AI-enhanced summary review
+          // Post human-readable AI summary
           await postSummaryReview(owner, repo, pullNumber, summaryBody, totalLineComments);
           
         } catch (error) {
