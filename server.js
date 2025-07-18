@@ -6,7 +6,7 @@ app.get('/', (req, res) => {
   res.json({ message: 'PR Buddy - Step 2: Webhook Data Logger' });
 });
 
-// Enhanced webhook endpoint with raw body parsing
+// Enhanced webhook endpoint with proper GitHub form data parsing
 app.post('/webhook', express.raw({ type: '*/*' }), (req, res) => {
   console.log('\n🎯 === WEBHOOK TRIGGERED === 🎯');
   console.log('⏰ Time:', new Date().toISOString());
@@ -22,19 +22,34 @@ app.post('/webhook', express.raw({ type: '*/*' }), (req, res) => {
   console.log('🔍 DEBUG: Body length:', req.body ? req.body.length : 'no body');
   console.log('🔍 DEBUG: Is Buffer:', Buffer.isBuffer(req.body));
   
-  // Parse JSON from raw buffer
+  // Parse GitHub webhook data (handles both JSON and form-encoded)
   let payload = {};
   try {
     if (req.body && req.body.length > 0) {
       const bodyString = req.body.toString();
       console.log('🔍 DEBUG: Raw body preview:', bodyString.substring(0, 100) + '...');
-      payload = JSON.parse(bodyString);
-      console.log('✅ Successfully parsed JSON payload');
+      
+      // Check if it's form-encoded (GitHub's format)
+      if (req.headers['content-type'] === 'application/x-www-form-urlencoded') {
+        // Parse form data: payload={"action":"opened"...}
+        const urlParams = new URLSearchParams(bodyString);
+        const payloadString = urlParams.get('payload');
+        if (payloadString) {
+          payload = JSON.parse(payloadString);
+          console.log('✅ Successfully parsed form-encoded GitHub payload');
+        } else {
+          console.log('❌ No payload parameter found in form data');
+        }
+      } else {
+        // Direct JSON parsing
+        payload = JSON.parse(bodyString);
+        console.log('✅ Successfully parsed JSON payload');
+      }
     } else {
       console.log('❌ No body data received');
     }
   } catch (error) {
-    console.log('❌ JSON parse error:', error.message);
+    console.log('❌ Parse error:', error.message);
   }
   
   // Log payload info if it's a pull request event
