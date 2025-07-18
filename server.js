@@ -28,7 +28,50 @@ async function postPRComment(owner, repo, pullNumber, comment) {
   }
 }
 
-// Simple function to get PR files
+// Function to post line-specific review comments
+async function postLineComment(owner, repo, pullNumber, filePath, line, comment) {
+  try {
+    console.log(`📍 Posting line comment on ${filePath}:${line}`);
+    
+    const response = await octokit.rest.pulls.createReviewComment({
+      owner: owner,
+      repo: repo,
+      pull_number: pullNumber,
+      body: comment,
+      path: filePath,
+      line: line
+    });
+    
+    console.log(`✅ Line comment posted! Comment ID: ${response.data.id}`);
+    return response.data;
+  } catch (error) {
+    console.error(`❌ Failed to post line comment:`, error.message);
+    throw error;
+  }
+}
+
+// Function to post a summary review
+async function postSummaryReview(owner, repo, pullNumber, body, lineCommentsCount) {
+  try {
+    console.log(`📋 Posting summary review for PR #${pullNumber}`);
+    
+    const response = await octokit.rest.pulls.createReview({
+      owner: owner,
+      repo: repo,
+      pull_number: pullNumber,
+      body: body,
+      event: 'COMMENT' // Can be 'COMMENT', 'APPROVE', or 'REQUEST_CHANGES'
+    });
+    
+    console.log(`✅ Summary review posted! Review ID: ${response.data.id}`);
+    return response.data;
+  } catch (error) {
+    console.error(`❌ Failed to post summary review:`, error.message);
+    throw error;
+  }
+}
+
+// Function to get PR files with their diffs
 async function getPRFiles(owner, repo, pullNumber) {
   try {
     console.log(`📂 Fetching files for PR #${pullNumber} in ${owner}/${repo}`);
@@ -44,7 +87,8 @@ async function getPRFiles(owner, repo, pullNumber) {
       status: file.status,
       additions: file.additions,
       deletions: file.deletions,
-      changes: file.changes
+      changes: file.changes,
+      patch: file.patch // This contains the actual diff
     }));
     
     console.log(`📁 Found ${files.length} files in PR`);
@@ -55,12 +99,91 @@ async function getPRFiles(owner, repo, pullNumber) {
   }
 }
 
+// Simple code analysis function to find issues in lines
+function analyzeCodeLine(line, lineNumber, filename) {
+  const issues = [];
+  
+  // Check for console.log (simple example)
+  if (line.includes('console.log')) {
+    issues.push({
+      line: lineNumber,
+      message: "🚨 **Debug code detected!**\n\nConsider removing `console.log` statements before merging to production."
+    });
+  }
+  
+  // Check for TODO comments
+  if (line.includes('TODO') || line.includes('FIXME')) {
+    issues.push({
+      line: lineNumber,
+      message: "📝 **TODO/FIXME found!**\n\nDon't forget to address this before merging."
+    });
+  }
+  
+  // Check for var usage (JavaScript files)
+  if (filename.endsWith('.js') && line.includes('var ')) {
+    issues.push({
+      line: lineNumber,
+      message: "💡 **Modern JavaScript suggestion!**\n\nConsider using `const` or `let` instead of `var` for better scoping."
+    });
+  }
+  
+  // Check for missing semicolons (basic check)
+  if (filename.endsWith('.js') && line.trim().length > 0 && !line.trim().endsWith(';') && 
+      !line.trim().endsWith('{') && !line.trim().endsWith('}') && 
+      !line.includes('//') && !line.includes('/*')) {
+    issues.push({
+      line: lineNumber,
+      message: "🔧 **Style suggestion!**\n\nConsider adding a semicolon at the end of this statement."
+    });
+  }
+  
+  return issues;
+}
+
+// Function to analyze a file's patch and find line-specific issues
+function analyzeFilePatch(filename, patch) {
+  if (!patch) return [];
+  
+  const lineComments = [];
+  const lines = patch.split('\n');
+  let currentLineNumber = 0;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Track line numbers in the diff
+    if (line.startsWith('@@')) {
+      // Parse line number from diff header like "@@ -1,4 +1,6 @@"
+      const match = line.match(/\+(\d+)/);
+      if (match) {
+        currentLineNumber = parseInt(match[1]) - 1;
+      }
+      continue;
+    }
+    
+    // Only analyze added lines (start with +)
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      currentLineNumber++;
+      const codeContent = line.substring(1); // Remove the '+' prefix
+      
+      // Analyze this line
+      const issues = analyzeCodeLine(codeContent, currentLineNumber, filename);
+      lineComments.push(...issues);
+    } else if (line.startsWith(' ')) {
+      // Context line (unchanged)
+      currentLineNumber++;
+    }
+  }
+  
+  return lineComments;
+}
+
 // Simple root endpoint
 app.get('/', (req, res) => {
-  res.json({ message: 'PR Buddy - Step 3: GitHub API Integration' });
+  res.json({ message: 'PR Buddy - Step 4: Line-specific Code Review' });
 });
 
-// Enhanced webhook endpoint with GitHub API integration
+// Enhanced webhook endpoint with line-specific commenting
 app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
   console.log('\n🎯 === WEBHOOK TRIGGERED === 🎯');
   console.log('⏰ Time:', new Date().toISOString());
@@ -120,29 +243,60 @@ app.post('/webhook', express.raw({ type: '*/*' }), async (req, res) => {
     if (action === 'opened' && pullNumber && owner && repo) {
       console.log(`🔥 Processing newly opened PR #${pullNumber}`);
       
-      // Fetch PR files and post comment asynchronously
+      // Fetch PR files and analyze code asynchronously
       setImmediate(async () => {
         try {
-          // Get PR files
+          // Get PR files with diffs
           const files = await getPRFiles(owner, repo, pullNumber);
           
-          // Create simple comment
-          const comment = `🤖 **PR Buddy here!** 🤖
+          let totalLineComments = 0;
+          const analysisResults = [];
+          
+          // Analyze each file for line-specific issues
+          for (const file of files) {
+            console.log(`🔍 Analyzing ${file.filename}...`);
+            
+            const lineIssues = analyzeFilePatch(file.filename, file.patch);
+            
+            // Post line-specific comments
+            for (const issue of lineIssues) {
+              try {
+                await postLineComment(owner, repo, pullNumber, file.filename, issue.line, issue.message);
+                totalLineComments++;
+              } catch (error) {
+                console.error(`❌ Failed to post comment on ${file.filename}:${issue.line}:`, error.message);
+              }
+            }
+            
+            analysisResults.push({
+              filename: file.filename,
+              issues: lineIssues.length,
+              changes: file.changes
+            });
+          }
+          
+          // Create summary review
+          const summaryBody = `🤖 **PR Buddy - Code Review Summary** 🤖
 
-Hello @${author}! I've detected your PR and here's what I found:
+Hello @${author}! I've reviewed your PR and here's what I found:
 
-📊 **PR Summary:**
-- **Title:** ${title}
-- **Files changed:** ${files.length}
+📊 **Review Statistics:**
+- **Files analyzed:** ${files.length}
 - **Total changes:** ${files.reduce((sum, f) => sum + f.changes, 0)} lines
+- **Line comments posted:** ${totalLineComments}
 
-📁 **Files in this PR:**
-${files.map(f => `- \`${f.filename}\` (${f.status}): +${f.additions}/-${f.deletions}`).join('\n')}
+📁 **File Analysis:**
+${analysisResults.map(r => `- \`${r.filename}\`: ${r.changes} changes, ${r.issues} suggestions`).join('\n')}
+
+${totalLineComments > 0 ? 
+  `✨ **Found ${totalLineComments} suggestions above!** Please review the line-specific comments.` : 
+  `🎉 **Great work!** No major issues found in this PR.`
+}
 
 Thanks for your contribution! 🚀`;
 
-          // Post the comment
-          await postPRComment(owner, repo, pullNumber, comment);
+          // Post summary review
+          await postSummaryReview(owner, repo, pullNumber, summaryBody, totalLineComments);
           
         } catch (error) {
           console.error(`❌ Error processing PR #${pullNumber}:`, error.message);
